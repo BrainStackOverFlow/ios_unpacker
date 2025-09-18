@@ -1,0 +1,15 @@
+[project]
+name = "ios_unpacker"
+version = "0.1.0"
+description = ""
+requires-python = ">=3.13"
+dependencies = [
+    "opentelemetry-api>=1.37.0",
+    "opentelemetry-sdk>=1.37.0",
+    "pyhpke>=0.6.2",
+    "python-aea>=1.0.1",
+    "requests>=2.32.5",
+]
+
+[tool.uv.sources]
+python-aea = { path = "../AEA", editable = true }
