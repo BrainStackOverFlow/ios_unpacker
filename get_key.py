@@ -20,7 +20,10 @@ from pyhpke import AEADId, CipherSuite, KDFId, KEMId, KEMKey
 
 AEA_PROFILE__HKDF_SHA256_AESCTR_HMAC__SYMMETRIC__NONE = 1
 
-suite = CipherSuite.new(KEMId.DHKEM_P256_HKDF_SHA256, KDFId.HKDF_SHA256, AEADId.AES256_GCM)
+suite = CipherSuite.new(
+    KEMId.DHKEM_P256_HKDF_SHA256, KDFId.HKDF_SHA256, AEADId.AES256_GCM
+)
+
 
 @dataclass(frozen=True)
 class AEAKey:
@@ -49,7 +52,9 @@ def get_key(f, verbose: bool = False) -> AEAKey:
 
     auth_data_blob = f.read(auth_data_blob_size)
     if len(auth_data_blob) != auth_data_blob_size:
-        raise RuntimeError(f"Expected {auth_data_blob_size} bytes, got {len(auth_data_blob)}")
+        raise RuntimeError(
+            f"Expected {auth_data_blob_size} bytes, got {len(auth_data_blob)}"
+        )
 
     assert auth_data_blob[:4]
 
@@ -99,7 +104,9 @@ def main(aea_path: Path, verbose: bool = False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Get the key for an AEA file or URL")
     parser.add_argument("path", help="Path or URL to the AEA file")
-    parser.add_argument("-v", "--verbose", action="store_true", help="Show verbose output")
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="Show verbose output"
+    )
     args = parser.parse_args()
 
     main(Path(args.path), args.verbose)
