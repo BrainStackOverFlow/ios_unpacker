@@ -4,9 +4,12 @@ version = "0.1.0"
 description = ""
 requires-python = ">=3.13"
 dependencies = [
+    "asn1>=3.1.0",
     "opentelemetry-api>=1.37.0",
     "opentelemetry-sdk>=1.37.0",
+    "pyghidra>=2.2.0",
     "pyhpke>=0.6.2",
+    "pyliblzfse>=0.4.1",
     "python-aea>=1.0.1",
     "requests>=2.32.5",
 ]
