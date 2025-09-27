@@ -10,7 +10,7 @@ dependencies = [
     "pyghidra>=2.2.0",
     "pyhpke>=0.6.2",
     "pyliblzfse>=0.4.1",
-    "python-aea>=1.0.1",
+    "python-aea>=1.1",
     "requests>=2.32.5",
 ]
 

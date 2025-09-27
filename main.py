@@ -94,8 +94,8 @@ class IOSFirmwareProcessor:
 
 			logger.info(f"symmetric_key {aea_key}")
 
-			with decoded_path.open("bw") as f:
-				aea.decode_into(file.read_bytes(), f, symmetric_key=aea_key.key_raw)
+			with file.open('br') as in_stream, decoded_path.open("w+b") as out_stream:
+				aea.decode_stream(in_stream, out_stream, symmetric_key=aea_key.key_raw)
 
 			output_files = [decoded_path]
 		elif file.name.endswith(".im4p"):
