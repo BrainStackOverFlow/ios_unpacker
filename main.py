@@ -2,7 +2,6 @@ import argparse
 import logging
 import os
 import shutil
-import struct
 import sys
 from collections import deque
 from pathlib import Path
@@ -13,6 +12,7 @@ import aea
 import asn1
 import liblzfse
 
+import apple_fs
 import get_key
 
 logger = logging.getLogger(__name__)
@@ -44,6 +44,7 @@ def is_lzfse(path: Path) -> bool:
 	return magic == LZFSE_MAGIC
 
 
+# docs: https://developer.apple.com/support/downloads/Apple-File-System-Reference.pdf
 def is_apple_fs(file: Path) -> bool:
 	with file.open("rb") as f:
 		f.seek(0x20)
@@ -60,6 +61,7 @@ class IOSFirmwareProcessor:
 		self.aea_out = self.out_dir / "aea"
 		self.im4p_out = self.out_dir / "im4p"
 		self.lzfse_out = self.out_dir / "lzfse"
+		self.apfs_out = self.out_dir / "apfs"
 
 	def process_single(self, file: Path) -> list[Path]:
 		logger.info(f"Processing {file}")
@@ -70,7 +72,7 @@ class IOSFirmwareProcessor:
 
 		if file.is_dir():
 			pass
-		if file.name.endswith(".ipsw"):
+		elif file.name.endswith(".ipsw"):
 			logger.info("TYPE ipsw")
 
 			with ZipFile(file, 'r') as ipsw_zip:
@@ -142,7 +144,9 @@ class IOSFirmwareProcessor:
 			output_files.append(lzfse_out)
 		elif is_apple_fs(file):
 			logger.info("TYPE: apple_fs")
-		elif is_macho(file):
+			relative_apfs = self.apfs_out / relative_path
+			output_files = apple_fs.extract_files(file, relative_apfs)
+		elif False and is_macho(file):
 			logger.info("TYPE: mach-o")
 
 		output_files = list(filter(lambda outfile: not outfile.is_dir(), output_files))
@@ -164,9 +168,14 @@ class IOSFirmwareProcessor:
 		files_without_output = []
 
 		while len(unhandled_files) > 0:
+			new_unhandled_files = []
+
 			unhandled_file = unhandled_files.popleft()
-			new_unhandled_files = self.process_single(unhandled_file)
-			unhandled_files.extend(new_unhandled_files)
+			try:
+				new_unhandled_files = self.process_single(unhandled_file)
+				unhandled_files.extend(new_unhandled_files)
+			except Exception as e:
+				logger.error(f"Could not parse {unhandled_file}", exc_info=e)
 
 			if len(new_unhandled_files) == 0:
 				files_without_output.append(str(unhandled_file))
