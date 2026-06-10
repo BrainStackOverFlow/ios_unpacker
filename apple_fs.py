@@ -433,6 +433,14 @@ def read_btree(
 			v=v,
 		)
 
+def latest_omap_val(omap_list: list[tuple[Container, Container]], oid: int) -> Container:
+	relevant_omap_kvs = [omap_kv for omap_kv in omap_list if omap_kv[0].ok_oid == oid]
+
+	if not relevant_omap_kvs:
+		raise ValueError(f"could not find oid {oid} in omap")
+
+	return max(relevant_omap_kvs, key=lambda omap_kv: omap_kv[0].ok_xid)[1]
+
 def extract_files(path: Path, out_dir: Path) -> list[Path]:
 	out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -448,10 +456,8 @@ def extract_files(path: Path, out_dir: Path) -> list[Path]:
 		fs_oids = [oid for oid in nx_superblock.nx_fs_oid if oid != 0]
 
 		for fs_oid in fs_oids:
-			relevant_omap_kvs = [omap_kv for omap_kv in omap_list if omap_kv[0].ok_oid == fs_oid]
-			top_xid_omap_entry = max(relevant_omap_kvs, key=lambda omap_kv: omap_kv[0].ok_xid)
-
-			f.seek(top_xid_omap_entry[1].ov_paddr * block_size, os.SEEK_SET)
+			fs_omap_entry = latest_omap_val(omap_list, fs_oid)
+			f.seek(fs_omap_entry.ov_paddr * block_size, os.SEEK_SET)
 			apfs_superblock = ApfsSuperBlock.parse_stream(f)
 
 	return []
