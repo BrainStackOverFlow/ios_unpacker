@@ -9,8 +9,8 @@ from construct import Struct, Bytes, Int64ul, Int32ul, Array, this, Const, Int16
 PAddr = Int64ul
 
 PRange = Struct(
-	"pr_start_paddr" / PAddr,
-	"pr_block_count" / Int64ul,
+	pr_start_paddr=PAddr,
+	pr_block_count=Int64ul,
 )
 
 OID = Int64ul
@@ -81,28 +81,28 @@ APFS_MAX_HIST = 8
 APFS_VOLNAME_LEN = 256
 
 ObjPhys = Struct(
-	"o_chksum" / Bytes(MAX_CKSUM_SIZE),
-	"o_oid" / OID,
-	"o_xid" / XID,
-	"o_type" / Int32ul,
-	"o_subtype" / Int32ul,
+	o_chksum=Bytes(MAX_CKSUM_SIZE),
+	o_oid=OID,
+	o_xid=XID,
+	o_type=Int32ul,
+	o_subtype=Int32ul,
 )
 
 CheckpointMapping = Struct(
-	"cpm_type" / Int32ul,
-	"cpm_subtype" / Int32ul,
-	"cpm_size" / Int32ul,
-	"cpm_pad" / Int32ul,
-	"cpm_fs_oid" / OID,
-	"cpm_oid" / OID,
-	"cpm_paddr" / OID,
+	cpm_type=Int32ul,
+	cpm_subtype=Int32ul,
+	cpm_size=Int32ul,
+	cpm_pad=Int32ul,
+	cpm_fs_oid=OID,
+	cpm_oid=OID,
+	cpm_paddr=OID,
 )
 
 CheckpointMapPhys = Struct(
-	"cpm_o" / ObjPhys,
-	"cpm_flags" / Int32ul,
-	"cpm_count" / Int32ul,
-	"cpm_map" / Array(this.cpm_count, CheckpointMapping),
+	cpm_o=ObjPhys,
+	cpm_flags=Int32ul,
+	cpm_count=Int32ul,
+	cpm_map=Array(this.cpm_count, CheckpointMapping),
 )
 
 NX_MAX_FILE_SYSTEMS = 100
@@ -111,122 +111,111 @@ NX_EPH_INFO_COUNT = 4
 NX_MAGIC = b'NXSB'
 
 NXSuperBlock = Struct(
-	"nx_o" / ObjPhys,
-	"nx_magic" / Const(NX_MAGIC),
-	"nx_block_size" / Int32ul,
-	"nx_block_count" / Int64ul,
-
-	"nx_features" / Int64ul,
-	"nx_readonly_compatible_features" / Int64ul,
-	"nx_incompatible_features" / Int64ul,
-
-	"uuid" / UUID,
-
-	"nx_next_oid" / OID,
-	"nx_next_xid" / XID,
-
-	"nx_xp_desc_blocks" / Int32ul,
-	"nx_xp_data_blocks" / Int32ul,
-	"nx_xp_desc_base" / PAddr,
-	"nx_xp_data_base" / PAddr,
-	"nx_xp_desc_next" / Int32ul,
-	"nx_xp_data_next" / Int32ul,
-	"nx_xp_desc_index" / Int32ul,
-	"nx_xp_desc_len" / Int32ul,
-	"nx_xp_data_index" / Int32ul,
-	"nx_xp_data_len" / Int32ul,
-
-	"nx_spaceman_oid" / OID,
-	"nx_omap_oid" / OID,
-	"nx_reaper_oid" / OID,
-
-	"nx_test_type" / Int32ul,
-
-	"nx_max_file_systems" / Int32ul,
-	"nx_fs_oid" / Array(NX_MAX_FILE_SYSTEMS, OID),
-	"nx_counters" / Array(NX_NUM_COUNTERS, Int64ul),
-	"nx_blocked_out_prange" / PRange,
-	"nx_evict_mapping_tree_oid" / OID,
-	"nx_flags" / Int64ul,
-	"nx_efi_jumpstart" / PAddr,
-	"nx_fusion_uuid" / UUID,
-	"nx_keylocker" / PRange,
-	"nx_ephemeral_info" / Array(NX_EPH_INFO_COUNT, Int64ul),
-
-	"nx_test_oid" / OID,
-
-	"nx_fusion_mt_oid" / OID,
-	"nx_fusion_wbc_oid" / OID,
-	"nx_fusion_wbc" / PRange,
-
-	"nx_newest_mounted_version" / Int64ul,
-	"nx_mkb_locker" / PRange,
+	nx_o=ObjPhys,
+	nx_magic=Const(NX_MAGIC),
+	nx_block_size=Int32ul,
+	nx_block_count=Int64ul,
+	nx_features=Int64ul,
+	nx_readonly_compatible_features=Int64ul,
+	nx_incompatible_features=Int64ul,
+	uuid=UUID,
+	nx_next_oid=OID,
+	nx_next_xid=XID,
+	nx_xp_desc_blocks=Int32ul,
+	nx_xp_data_blocks=Int32ul,
+	nx_xp_desc_base=PAddr,
+	nx_xp_data_base=PAddr,
+	nx_xp_desc_next=Int32ul,
+	nx_xp_data_next=Int32ul,
+	nx_xp_desc_index=Int32ul,
+	nx_xp_desc_len=Int32ul,
+	nx_xp_data_index=Int32ul,
+	nx_xp_data_len=Int32ul,
+	nx_spaceman_oid=OID,
+	nx_omap_oid=OID,
+	nx_reaper_oid=OID,
+	nx_test_type=Int32ul,
+	nx_max_file_systems=Int32ul,
+	nx_fs_oid=Array(NX_MAX_FILE_SYSTEMS, OID),
+	nx_counters=Array(NX_NUM_COUNTERS, Int64ul),
+	nx_blocked_out_prange=PRange,
+	nx_evict_mapping_tree_oid=OID,
+	nx_flags=Int64ul,
+	nx_efi_jumpstart=PAddr,
+	nx_fusion_uuid=UUID,
+	nx_keylocker=PRange,
+	nx_ephemeral_info=Array(NX_EPH_INFO_COUNT, Int64ul),
+	nx_test_oid=OID,
+	nx_fusion_mt_oid=OID,
+	nx_fusion_wbc_oid=OID,
+	nx_fusion_wbc=PRange,
+	nx_newest_mounted_version=Int64ul,
+	nx_mkb_locker=PRange,
 )
 
 OMapPhys = Struct(
-	"om_o" / ObjPhys,
-	"om_flags" / Int32ul,
-	"om_snap_count" / Int32ul,
-	"om_tree_type" / Int32ul,
-	"om_snapshot_tree_type" / Int32ul,
-	"om_tree_oid" / OID,
-	"om_snapshot_tree_oid" / OID,
-	"om_most_recent_snap" / XID,
-	"om_pending_revert_min" / XID,
-	"om_pending_revert_max" / XID
+	om_o=ObjPhys,
+	om_flags=Int32ul,
+	om_snap_count=Int32ul,
+	om_tree_type=Int32ul,
+	om_snapshot_tree_type=Int32ul,
+	om_tree_oid=OID,
+	om_snapshot_tree_oid=OID,
+	om_most_recent_snap=XID,
+	om_pending_revert_min=XID,
+	om_pending_revert_max=XID
 )
 
 OMapKey = Struct(
-	"ok_oid" / OID,
-	"ok_xid" / XID,
+	ok_oid=OID,
+	ok_xid=XID,
 )
 
 OMapVal = Struct(
-	"ov_flags" / Int32ul,
-	"ov_size" / Int32ul,
-	"ov_paddr" / PAddr,
+	ov_flags=Int32ul,
+	ov_size=Int32ul,
+	ov_paddr=PAddr,
 )
 
 NLoc = Struct(
-	"offset" / Int16ul,
-	"len" / Int16ul
+	offset=Int16ul,
+	len=Int16ul
 )
 
 BtreeNodePhys = Struct(
-	"btn_o" / ObjPhys,
-	"btn_flags" / Int16ul,
-	"btn_level" / Int16ul,
-	"btn_nkeys" / Int32ul,
-	"btn_table_space" / NLoc,
-	"btn_free_space" / NLoc,
-	"btn_key_free_list" / NLoc,
-	"btn_val_free_list" / NLoc
-
+	btn_o=ObjPhys,
+	btn_flags=Int16ul,
+	btn_level=Int16ul,
+	btn_nkeys=Int32ul,
+	btn_table_space=NLoc,
+	btn_free_space=NLoc,
+	btn_key_free_list=NLoc,
+	btn_val_free_list=NLoc
 )
 
 KVOff = Struct(
-	"k" / Int16ul,
-	"v" / Int16ul,
+	k=Int16ul,
+	v=Int16ul,
 )
 
 KVLoc = Struct(
-	"k" / NLoc,
-	"v" / NLoc,
+	k=NLoc,
+	v=NLoc,
 )
 
 BTreeInfoFixed = Struct(
-	"bt_flags" / Int32ul,
-	"bt_node_size" / Int32ul,
-	"bt_key_size" / Int32ul,
-	"bt_val_size" / Int32ul,
+	bt_flags=Int32ul,
+	bt_node_size=Int32ul,
+	bt_key_size=Int32ul,
+	bt_val_size=Int32ul,
 )
 
 BTreeInfo = Struct(
-	"bt_fixed" / BTreeInfoFixed,
-	"bt_longest_key" / Int32ul,
-	"bt_longest_val" / Int32ul,
-	"bt_key_count" / Int64ul,
-	"bt_node_count" / Int64ul,
+	bt_fixed=BTreeInfoFixed,
+	bt_longest_key=Int32ul,
+	bt_longest_val=Int32ul,
+	bt_key_count=Int64ul,
+	bt_node_count=Int64ul,
 )
 
 CpKeyClass = Int32ul
@@ -235,70 +224,70 @@ CpKeyRevision = Int16ul
 CryptoFlags = Int32ul
 
 WrappedMetaCryptoState = Struct(
-	"major_version" / Int16ul,
-	"minor_version" / Int16ul,
-	"cpflags" / CryptoFlags,
-	"persistent_class" / CpKeyClass,
-	"key_os_version" / CpKeyOsVersion,
-	"key_revision" / CpKeyRevision,
-	"unused" / Int16ul
+	major_version=Int16ul,
+	minor_version=Int16ul,
+	cpflags=CryptoFlags,
+	persistent_class=CpKeyClass,
+	key_os_version=CpKeyOsVersion,
+	key_revision=CpKeyRevision,
+	unused=Int16ul
 )
 
 ApfsModifiedBy = Struct(
-	"id" / PaddedString(APFS_MODIFIED_NAMELEN, 'utf8'),
-	"timestamp" / Int64ul,
-	"last_xid" / XID,
+	id=PaddedString(APFS_MODIFIED_NAMELEN, 'utf8'),
+	timestamp=Int64ul,
+	last_xid=XID,
 )
 
 ApfsSuperBlock = Struct(
-	"apfs_o" / ObjPhys,
-	"apfs_magic" / Int32ul,
-	"apfs_fs_index" / Int32ul,
-	"apfs_features" / Int64ul,
-	"apfs_readonly_compatible_features" / Int64ul,
-	"apfs_incompatible_features" / Int64ul,
-	"apfs_unmount_time" / Int64ul,
-	"apfs_fs_reserve_block_count" / Int64ul,
-	"apfs_fs_quota_block_count" / Int64ul,
-	"apfs_fs_alloc_count" / Int64ul,
-	"apfs_meta_crypto" / WrappedMetaCryptoState,
-	"apfs_root_tree_type" / Int32ul,
-	"apfs_extentref_tree_type" / Int32ul,
-	"apfs_snap_meta_tree_type" / Int32ul,
-	"apfs_omap_oid" / OID,
-	"apfs_root_tree_oid" / OID,
-	"apfs_extentref_tree_oid" / OID,
-	"apfs_snap_meta_tree_oid" / OID,
-	"apfs_revert_to_xid" / XID,
-	"apfs_revert_to_sblock_oid" / OID,
-	"apfs_next_obj_id" / Int64ul,
-	"apfs_num_files" / Int64ul,
-	"apfs_num_directories" / Int64ul,
-	"apfs_num_symlinks" / Int64ul,
-	"apfs_num_other_fsobjects" / Int64ul,
-	"apfs_num_snapshots" / Int64ul,
-	"apfs_total_blocks_alloced" / Int64ul,
-	"apfs_total_blocks_freed" / Int64ul,
-	"apfs_vol_uuid" / UUID,
-	"apfs_last_mod_time" / Int64ul,
-	"apfs_fs_flags" / Int64ul,
-	"apfs_formatted_by" / ApfsModifiedBy,
-	"apfs_modified_by" /  Array(APFS_MAX_HIST, ApfsModifiedBy),
-	"apfs_volname" / PaddedString(APFS_VOLNAME_LEN, "utf8"),
-	"apfs_next_doc_id" / Int32ul,
-	"apfs_role" / Int16ul,
-	"reserved" / Int16ul,
-	"apfs_root_to_xid" / XID,
-	"apfs_er_state_oid" / OID,
-	"apfs_cloneinfo_id_epoch" / Int64ul,
-	"apfs_cloneinfo_xid" / Int64ul,
-	"apfs_snap_meta_ext_oid" / OID,
-	"apfs_volume_group_id" / UUID,
-	"apfs_integrity_meta_oid" / OID,
-	"apfs_fext_tree_oid" / OID,
-	"apfs_fext_tree_type" / Int32ul,
-	"reserved_type" / Int32ul,
-	"reserved_oid" / OID,
+	apfs_o=ObjPhys,
+	apfs_magic=Int32ul,
+	apfs_fs_index=Int32ul,
+	apfs_features=Int64ul,
+	apfs_readonly_compatible_features=Int64ul,
+	apfs_incompatible_features=Int64ul,
+	apfs_unmount_time=Int64ul,
+	apfs_fs_reserve_block_count=Int64ul,
+	apfs_fs_quota_block_count=Int64ul,
+	apfs_fs_alloc_count=Int64ul,
+	apfs_meta_crypto=WrappedMetaCryptoState,
+	apfs_root_tree_type=Int32ul,
+	apfs_extentref_tree_type=Int32ul,
+	apfs_snap_meta_tree_type=Int32ul,
+	apfs_omap_oid=OID,
+	apfs_root_tree_oid=OID,
+	apfs_extentref_tree_oid=OID,
+	apfs_snap_meta_tree_oid=OID,
+	apfs_revert_to_xid=XID,
+	apfs_revert_to_sblock_oid=OID,
+	apfs_next_obj_id=Int64ul,
+	apfs_num_files=Int64ul,
+	apfs_num_directories=Int64ul,
+	apfs_num_symlinks=Int64ul,
+	apfs_num_other_fsobjects=Int64ul,
+	apfs_num_snapshots=Int64ul,
+	apfs_total_blocks_alloced=Int64ul,
+	apfs_total_blocks_freed=Int64ul,
+	apfs_vol_uuid=UUID,
+	apfs_last_mod_time=Int64ul,
+	apfs_fs_flags=Int64ul,
+	apfs_formatted_by=ApfsModifiedBy,
+	apfs_modified_by=Array(APFS_MAX_HIST, ApfsModifiedBy),
+	apfs_volname=PaddedString(APFS_VOLNAME_LEN, "utf8"),
+	apfs_next_doc_id=Int32ul,
+	apfs_role=Int16ul,
+	reserved=Int16ul,
+	apfs_root_to_xid=XID,
+	apfs_er_state_oid=OID,
+	apfs_cloneinfo_id_epoch=Int64ul,
+	apfs_cloneinfo_xid=Int64ul,
+	apfs_snap_meta_ext_oid=OID,
+	apfs_volume_group_id=UUID,
+	apfs_integrity_meta_oid=OID,
+	apfs_fext_tree_oid=OID,
+	apfs_fext_tree_type=Int32ul,
+	reserved_type=Int32ul,
+	reserved_oid=OID,
 )
 
 @contextmanager
