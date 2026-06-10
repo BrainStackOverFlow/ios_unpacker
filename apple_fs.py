@@ -74,6 +74,8 @@ BTNODE_HASHED = 0x0008
 BTNODE_NOHEADER = 0x0010
 BTNODE_CHECK_KOFF_INVAL = 0x8000
 
+BTOFF_INVALID = 0xFFFF
+
 APFS_MODIFIED_NAMELEN = 32
 
 APFS_MAGIC = 'BSPA'
@@ -290,6 +292,13 @@ ApfsSuperBlock = Struct(
 	reserved_oid=OID,
 )
 
+BTREE_NODE_HASH_SIZE_MAX = 64
+
+BtnIndexNodeVal = Struct(
+	binv_child_oid=OID,
+	binv_child_hash=Bytes(BTREE_NODE_HASH_SIZE_MAX),
+)
+
 @contextmanager
 def file_keep_pos(f):
 	start_pos = f.tell()
@@ -299,52 +308,130 @@ def file_keep_pos(f):
 		f.seek(start_pos, os.SEEK_SET)
 
 
-def read_btree_fixed_size(f, block_size: int, btree_pos, k: Construct, v: Construct) -> list[
-	tuple[Container, Container]]:
+def read_btree_node(
+		f,
+		block_size: int,
+		node_pos: int,
+		btree_info,
+		k: Construct,
+		v: Construct,
+) -> list[tuple[Container, Container]]:
+	f.seek(node_pos, os.SEEK_SET)
+	node = BtreeNodePhys.parse_stream(f)
+	btn_data_pos = f.tell()
+
+	is_root = bool(node.btn_flags & BTNODE_ROOT)
+	is_leaf = bool(node.btn_flags & BTNODE_LEAF)
+	is_fixed = bool(node.btn_flags & BTNODE_FIXED_KV_SIZE)
+
+	node_size = btree_info.bt_fixed.bt_node_size
+	key_size = btree_info.bt_fixed.bt_key_size
+	leaf_value_size = btree_info.bt_fixed.bt_val_size
+
+	if is_fixed and key_size == 0:
+		raise ValueError(
+			f"node at 0x{node_pos:x} is fixed-size but bt_key_size is 0"
+		)
+
+	if is_fixed and leaf_value_size == 0:
+		raise ValueError(
+			f"leaf node at 0x{node_pos:x} is fixed-size but bt_val_size is 0"
+		)
+
+	toc_pos = btn_data_pos + node.btn_table_space.offset
+	key_area_pos = toc_pos + node.btn_table_space.len
+
+	value_area_end = node_pos + node_size
+	if is_root:
+		value_area_end -= BTreeInfo.sizeof()
+
+	toc_entry_size = KVOff.sizeof() if is_fixed else KVLoc.sizeof()
+
+	pairs = []
+
+	for i in range(node.btn_nkeys):
+		toc_entry_pos = toc_pos + i * toc_entry_size
+
+		if is_fixed:
+			f.seek(toc_entry_pos, os.SEEK_SET)
+			entry = KVOff.parse_stream(f)
+
+			k_off = entry.k
+			k_len = key_size
+			v_off = entry.v
+			v_len = leaf_value_size
+		else:
+			f.seek(toc_entry_pos, os.SEEK_SET)
+			entry = KVLoc.parse_stream(f)
+
+			k_off = entry.k.offset
+			k_len = entry.k.len
+			v_off = entry.v.offset
+			v_len = entry.v.len
+
+		if v_off == BTOFF_INVALID:
+			continue
+
+		key_pos = key_area_pos + k_off
+		value_pos = value_area_end - v_off
+
+		if is_leaf:
+			f.seek(key_pos, os.SEEK_SET)
+			key_obj = k.parse_stream(f, k_len=k_len)
+
+			f.seek(value_pos, os.SEEK_SET)
+			value_obj = v.parse_stream(f, v_len=v_len, key_obj=key_obj)
+
+			pairs.append((key_obj, value_obj))
+		else:
+			f.seek(value_pos, os.SEEK_SET)
+
+			if node.btn_flags & BTNODE_HASHED:
+				btn_index_node_val = BtnIndexNodeVal.parse_stream(f)
+				oid = btn_index_node_val.binv_child_oid
+			else:
+				oid = OID.parse_stream(f)
+
+			child_pos = oid * block_size
+			pairs.extend(
+				read_btree_node(
+					f=f,
+					block_size=block_size,
+					node_pos=child_pos,
+					btree_info=btree_info,
+					k=k,
+					v=v,
+				)
+			)
+
+	return pairs
+
+
+def read_btree(
+		f,
+		block_size: int,
+		btree_pos: int,
+		k: Construct,
+		v: Construct,
+) -> list[tuple[Container, Container]]:
 	with file_keep_pos(f):
 		f.seek(btree_pos, os.SEEK_SET)
-		btree = BtreeNodePhys.parse_stream(f)
-		btree_btn_data_pos = f.tell()
+		root = BtreeNodePhys.parse_stream(f)
 
-		if not (btree.btn_flags & BTNODE_FIXED_KV_SIZE):
-			raise RuntimeError("Didnt expect none BTNODE_FIXED_KV_SIZE")
-
-		if not (btree.btn_flags & BTNODE_ROOT):
-			raise RuntimeError("Didnt expect none BTNODE_ROOT")
-
-		if not (btree.btn_flags & BTNODE_LEAF):
-			raise RuntimeError("Didnt expect none BTNODE_LEAF")
+		if not (root.btn_flags & BTNODE_ROOT):
+			raise ValueError(f"node at 0x{btree_pos:x} is not a root node")
 
 		f.seek(btree_pos + block_size - BTreeInfo.sizeof(), os.SEEK_SET)
 		btree_info = BTreeInfo.parse_stream(f)
 
-		if k.sizeof() != btree_info.bt_fixed.bt_key_size:
-			raise RuntimeError(f"{btree_info.bt_fixed.bt_key_size=} while expecting {k.sizeof()=}")
-
-		if v.sizeof() != btree_info.bt_fixed.bt_val_size:
-			raise RuntimeError(f"{btree_info.bt_fixed.bt_val_size=} while expecting {v.sizeof()=}")
-
-		KVOffArray = Array(btree.btn_nkeys, KVOff)
-
-		f.seek(btree_btn_data_pos + btree.btn_table_space.offset, os.SEEK_SET)
-		kvoffs = KVOffArray.parse_stream(f)
-
-		keys_base_pos = btree_btn_data_pos + btree.btn_table_space.offset + btree.btn_table_space.len
-		values_base_pos = btree_pos + block_size - BTreeInfo.sizeof()
-
-		key_vals = []
-
-		for kvoff in kvoffs:
-			f.seek(keys_base_pos + kvoff.k, os.SEEK_SET)
-			key = k.parse_stream(f)
-
-			f.seek(values_base_pos - kvoff.v, os.SEEK_SET)
-			val = v.parse_stream(f)
-
-			key_vals.append((key, val))
-
-		return key_vals
-
+		return read_btree_node(
+			f=f,
+			block_size=block_size,
+			node_pos=btree_pos,
+			btree_info=btree_info,
+			k=k,
+			v=v,
+		)
 
 def extract_files(path: Path, out_dir: Path) -> list[Path]:
 	out_dir.mkdir(parents=True, exist_ok=True)
@@ -356,7 +443,7 @@ def extract_files(path: Path, out_dir: Path) -> list[Path]:
 		f.seek(nx_superblock.nx_omap_oid * block_size, os.SEEK_SET)
 		nx_omap_phys = OMapPhys.parse_stream(f)
 
-		omap_list = read_btree_fixed_size(f, block_size, nx_omap_phys.om_tree_oid * block_size, OMapKey, OMapVal)
+		omap_list = read_btree(f, block_size, nx_omap_phys.om_tree_oid * block_size, OMapKey, OMapVal)
 
 		fs_oids = [oid for oid in nx_superblock.nx_fs_oid if oid != 0]
 
