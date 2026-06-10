@@ -4,7 +4,8 @@ import os
 from contextlib import contextmanager
 from pathlib import Path
 
-from construct import Struct, Bytes, Int64ul, Int32ul, Array, this, Const, Int16ul, Construct, Container, PaddedString
+from construct import Struct, Bytes, Int64ul, Int32ul, Array, this, Const, Int16ul, Construct, Container, PaddedString, \
+	Computed, Switch
 
 PAddr = Int64ul
 
@@ -299,6 +300,72 @@ BtnIndexNodeVal = Struct(
 	binv_child_hash=Bytes(BTREE_NODE_HASH_SIZE_MAX),
 )
 
+OBJ_ID_MASK = 0x0fffffffffffffff
+OBJ_TYPE_MASK = 0xf000000000000000
+OBJ_TYPE_SHIFT = 60
+SYSTEM_OBJ_ID_MARK = 0x0fffffff00000000
+
+JKey = Struct(
+	obj_id_and_type=Int64ul,
+	obj_id=Computed(this.obj_id_and_type & OBJ_ID_MASK),
+	obj_type=Computed((this.obj_id_and_type & OBJ_TYPE_MASK) >> OBJ_TYPE_SHIFT),
+)
+
+JNameKeyRest = Struct(
+	name_len=Int16ul,
+	name=PaddedString(this.name_len, 'utf-8'),
+)
+
+J_DREC_LEN_MASK = 0x000003ff
+J_DREC_HASH_MASK = 0xfffff400
+J_DREC_HASH_SHIFT = 10
+
+JDRecHashedKeyRest = Struct(
+	name_len_and_hash=Int32ul,
+	name_len=Computed(this.name_len_and_hash & J_DREC_LEN_MASK),
+	name_hash=Computed((this.name_len_and_hash & J_DREC_HASH_MASK) >> J_DREC_HASH_SHIFT),
+	name=PaddedString(this.name_len, 'utf-8'),
+)
+
+JFileExtentKeyRest = Struct(
+	logical_addr=Int64ul,
+)
+
+APFS_TYPE_ANY = 0
+APFS_TYPE_SNAP_METADATA = 1
+APFS_TYPE_EXTENT = 2
+APFS_TYPE_INODE = 3
+APFS_TYPE_XATTR = 4
+APFS_TYPE_SIBLING_LINK = 5
+APFS_TYPE_DSTREAM_ID = 6
+APFS_TYPE_CRYPTO_STATE = 7
+APFS_TYPE_FILE_EXTENT = 8
+APFS_TYPE_DIR_REC = 9
+APFS_TYPE_DIR_STATS = 10
+APFS_TYPE_SNAP_NAME = 11
+APFS_TYPE_SIBLING_MAP = 12
+APFS_TYPE_FILE_INFO = 13
+APFS_TYPE_MAX_VALID = 13
+APFS_TYPE_MAX = 15
+APFS_TYPE_INVALID = 15
+
+APFSRootTreeKey = Struct(
+	hdr=JKey,
+	body=Switch(this.hdr.obj_type, {
+	}, default=Bytes(this._params.k_len)),
+)
+
+UID = Int32ul
+GID = Int32ul
+Mode = Int16ul
+CPKeyClass = Int32ul
+
+APFSRootTreeValue = Struct(
+	body=Switch(this._params.key_obj.hdr.obj_type, {
+	}, default=Bytes(this._params.v_len)),
+)
+
+
 @contextmanager
 def file_keep_pos(f):
 	start_pos = f.tell()
@@ -459,5 +526,13 @@ def extract_files(path: Path, out_dir: Path) -> list[Path]:
 			fs_omap_entry = latest_omap_val(omap_list, fs_oid)
 			f.seek(fs_omap_entry.ov_paddr * block_size, os.SEEK_SET)
 			apfs_superblock = ApfsSuperBlock.parse_stream(f)
+
+			f.seek(apfs_superblock.apfs_omap_oid * block_size, os.SEEK_SET)
+			apfs_omap = OMapPhys.parse_stream(f)
+			apfs_omap_list = read_btree(f, block_size, apfs_omap.om_tree_oid * block_size, OMapKey, OMapVal)
+
+			root_tree_omap_entry = latest_omap_val(apfs_omap_list, apfs_superblock.apfs_root_tree_oid)
+			root_tree_addr = root_tree_omap_entry.ov_paddr * block_size
+			root_fs_entries = read_btree(f, block_size, root_tree_addr, APFSRootTreeKey, APFSRootTreeValue)
 
 	return []
