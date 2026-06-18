@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from construct import Struct, Bytes, Int64ul, Int32ul, Array, this, Const, Int16ul, Construct, Container, PaddedString, \
-	Computed, Switch
+	Computed, Switch, Tell, IfThenElse, Int8ul
 
 PAddr = Int64ul
 
@@ -59,6 +59,8 @@ OBJECT_TYPE_TEST = 0x000000ff
 
 # Object Type Flags
 
+OBJ_STORAGETYPE_MASK = 0xc0000000
+
 OBJ_VIRTUAL = 0x00000000
 OBJ_EPHEMERAL = 0x80000000
 OBJ_PHYSICAL = 0x40000000
@@ -76,6 +78,16 @@ BTNODE_NOHEADER = 0x0010
 BTNODE_CHECK_KOFF_INVAL = 0x8000
 
 BTOFF_INVALID = 0xFFFF
+
+BTREE_UINT64_KEYS = 0x00000001
+BTREE_SEQUENTIAL_INSERT = 0x00000002
+BTREE_ALLOW_GHOSTS = 0x00000004
+BTREE_EPHEMERAL = 0x00000008
+BTREE_PHYSICAL = 0x00000010
+BTREE_NONPERSISTENT = 0x00000020
+BTREE_KV_NONALIGNED = 0x00000040
+BTREE_HASHED = 0x00000080
+BTREE_NOHEADER = 0x00000100
 
 APFS_MODIFIED_NAMELEN = 32
 
@@ -311,26 +323,6 @@ JKey = Struct(
 	obj_type=Computed((this.obj_id_and_type & OBJ_TYPE_MASK) >> OBJ_TYPE_SHIFT),
 )
 
-JNameKeyRest = Struct(
-	name_len=Int16ul,
-	name=PaddedString(this.name_len, 'utf-8'),
-)
-
-J_DREC_LEN_MASK = 0x000003ff
-J_DREC_HASH_MASK = 0xfffff400
-J_DREC_HASH_SHIFT = 10
-
-JDRecHashedKeyRest = Struct(
-	name_len_and_hash=Int32ul,
-	name_len=Computed(this.name_len_and_hash & J_DREC_LEN_MASK),
-	name_hash=Computed((this.name_len_and_hash & J_DREC_HASH_MASK) >> J_DREC_HASH_SHIFT),
-	name=PaddedString(this.name_len, 'utf-8'),
-)
-
-JFileExtentKeyRest = Struct(
-	logical_addr=Int64ul,
-)
-
 APFS_TYPE_ANY = 0
 APFS_TYPE_SNAP_METADATA = 1
 APFS_TYPE_EXTENT = 2
@@ -349,10 +341,100 @@ APFS_TYPE_MAX_VALID = 13
 APFS_TYPE_MAX = 15
 APFS_TYPE_INVALID = 15
 
+EmptyKeyRest = Struct()
+
+JNameKeyRest = Struct(
+	name_len=Int16ul,
+	name=PaddedString(this.name_len, 'utf-8'),
+)
+
+J_DREC_LEN_MASK = 0x000003ff
+J_DREC_HASH_MASK = 0xfffff400
+J_DREC_HASH_SHIFT = 10
+
+JDRecHashedKeyRest = Struct(
+	name_len_and_hash=Int32ul,
+	name_len=Computed(this.name_len_and_hash & J_DREC_LEN_MASK),
+	name_hash=Computed((this.name_len_and_hash & J_DREC_HASH_MASK) >> J_DREC_HASH_SHIFT),
+	name=PaddedString(this.name_len, 'utf-8'),
+)
+
+JXattrKeyRest = Struct(
+	name_len=Int16ul,
+	name=PaddedString(this.name_len, 'utf-8'),
+)
+
+JDRecKeyRest = Struct(
+	name_len=Int16ul,
+	name=PaddedString(this.name_len, 'utf-8'),
+)
+
+JFileExtentKeyRest = Struct(
+	logical_addr=Int64ul,
+)
+
 APFSRootTreeKey = Struct(
 	hdr=JKey,
 	body=Switch(this.hdr.obj_type, {
-	}, default=Bytes(this._params.k_len)),
+		APFS_TYPE_INODE: EmptyKeyRest,
+		APFS_TYPE_XATTR: JXattrKeyRest,
+		APFS_TYPE_DIR_REC: JDRecHashedKeyRest,
+	}, default=Bytes(this._params.k_len - JKey.sizeof())),
+)
+
+XField = Struct(
+	x_type=Int8ul,
+	x_flags=Int8ul,
+	x_size=Int16ul,
+)
+
+XFBlob = Struct(
+	xf_num_exts=Int16ul,
+	xf_used_data=Int16ul,
+)
+
+INO_EXT_TYPE_DELTA_TREE_OID = 2
+INO_EXT_TYPE_DOCUMENT_ID = 3
+INO_EXT_TYPE_NAME = 4
+INO_EXT_TYPE_PREV_FSIZE = 5
+INO_EXT_TYPE_RESERVED_6 = 6
+INO_EXT_TYPE_FINDER_INFO = 7
+INO_EXT_TYPE_DSTREAM = 8
+INO_EXT_TYPE_RESERVED_9 = 9
+INO_EXT_TYPE_DIR_STATS_KEY = 10
+INO_EXT_TYPE_FS_UUID = 11
+INO_EXT_TYPE_RESERVED_12 = 12
+INO_EXT_TYPE_SPARSE_BYTES = 13
+INO_EXT_TYPE_RDEV = 14
+INO_EXT_TYPE_PURGEABLE_FLAGS = 15
+INO_EXT_TYPE_ORIG_SYNC_ROOT_ID = 16
+
+
+def align_up_to_8(n):
+	return (n + 7) & ~7
+
+
+XFields = Struct(
+	xf_blob=XFBlob,
+	xfields_meta=Array(this.xf_blob.xf_num_exts, XField),
+	xfields_raw=Array(
+		this.xf_blob.xf_num_exts,
+		Struct(
+			_size=Computed(lambda ctx: ctx._.xfields_meta[ctx._index].x_size),
+			data=Bytes(lambda ctx: ctx._size),
+			padding=Bytes(lambda ctx: align_up_to_8(ctx._size) - ctx._size),
+		),
+	),
+	xfields=Array(
+		this.xf_blob.xf_num_exts,
+		Struct(
+			_raw=Computed(lambda ctx: ctx._.xfields_raw[ctx._index].data),
+			type=Computed(lambda ctx: ctx._.xfields_meta[ctx._index].x_type),
+			value=Switch(this.type, {
+				INO_EXT_TYPE_NAME: Computed(lambda ctx: ctx._raw.decode("utf-8")),
+			}, default=Computed(this._raw)),
+		),
+	),
 )
 
 UID = Int32ul
@@ -360,9 +442,81 @@ GID = Int32ul
 Mode = Int16ul
 CPKeyClass = Int32ul
 
+JINodeVal = Struct(
+	_fixed_start=Tell,
+	parent_id=Int64ul,
+	private_id=Int64ul,
+	create_time=Int64ul,
+	mod_time=Int64ul,
+	change_time=Int64ul,
+	access_time=Int64ul,
+	internal_flags=Int64ul,
+	nchildren_nlink=Int32ul,
+	nchildren=Computed(this.nchildren_nlink),
+	nlink=Computed(this.nchildren_nlink),
+	default_protection_class=CPKeyClass,
+	write_generation_counter=Int32ul,
+	bsd_flags=Int32ul,
+	owner=UID,
+	group=GID,
+	mode=Mode,
+	pad1=Int16ul,
+	uncompressed_size=Int64ul,
+	_fixed_end=Tell,
+	_fixed_size=Computed(this._fixed_end - this._fixed_start),
+	_xfields_size=Computed(this._params.v_len - this._fixed_size),
+	_xfields_bytes=Bytes(this._xfields_size),
+	xfields=IfThenElse(
+		lambda ctx: ctx._xfields_size > 0,
+		Computed(lambda ctx: XFields.parse(ctx._xfields_bytes)),
+		Computed(lambda ctx: None),
+	),
+)
+
+JXattrVal = Struct(
+	flags=Int16ul,
+	xdata_len=Int16ul,
+	xdata=Bytes(this.xdata_len),
+)
+
+JDRecVal = Struct(
+	_fixed_start=Tell,
+	file_id=Int64ul,
+	date_added=Int64ul,
+	flags=Int16ul,
+	_fixed_end=Tell,
+	_fixed_size=Computed(this._fixed_end - this._fixed_start),
+	_xfields_size=Computed(this._params.v_len - this._fixed_size),
+	_xfields_bytes=Bytes(this._xfields_size),
+	xfields=IfThenElse(
+		lambda ctx: ctx._xfields_size > 0,
+		Computed(lambda ctx: XFields.parse(ctx._xfields_bytes)),
+		Computed(lambda ctx: None),
+	),
+)
+
 APFSRootTreeValue = Struct(
 	body=Switch(this._params.key_obj.hdr.obj_type, {
+		APFS_TYPE_INODE: JINodeVal,
+		APFS_TYPE_XATTR: JXattrVal,
+		APFS_TYPE_DIR_REC: JDRecVal,
 	}, default=Bytes(this._params.v_len)),
+)
+
+J_FILE_EXTENT_LEN_MASK = 0x00ffffffffffffff
+J_FILE_EXTENT_FLAG_MASK = 0xff00000000000000
+J_FILE_EXTENT_FLAG_SHIFT = 56
+
+FExtTreeKey = Struct(
+	private_id=Int64ul,
+	logical_addr=Int64ul,
+)
+
+FExtTreeVal = Struct(
+	len_and_flags=Int64ul,
+	phys_block_num=Int64ul,
+	len=Computed(this.len_and_flags & J_FILE_EXTENT_LEN_MASK),
+	flags=Computed((this.len_and_flags & J_FILE_EXTENT_FLAG_MASK) >> J_FILE_EXTENT_FLAG_SHIFT),
 )
 
 
@@ -382,14 +536,28 @@ def read_btree_node(
 		btree_info,
 		k: Construct,
 		v: Construct,
+		omap_list: list | None,
+		btree_root_oid,
 ) -> list[tuple[Container, Container]]:
 	f.seek(node_pos, os.SEEK_SET)
 	node = BtreeNodePhys.parse_stream(f)
 	btn_data_pos = f.tell()
 
+	# print(
+	# 	"NODE",
+	# 	"pos", hex(node_pos),
+	# 	"level", node.btn_level,
+	# 	"nkeys", node.btn_nkeys,
+	# 	"flags", hex(node.btn_flags),
+	# )
+
 	is_root = bool(node.btn_flags & BTNODE_ROOT)
 	is_leaf = bool(node.btn_flags & BTNODE_LEAF)
 	is_fixed = bool(node.btn_flags & BTNODE_FIXED_KV_SIZE)
+	is_hashed = bool(node.btn_flags & BTNODE_HASHED)
+
+	is_physical_btree = bool(btree_info.bt_fixed.bt_flags & BTREE_PHYSICAL)
+	is_ephemeral_btree = bool(btree_info.bt_fixed.bt_flags & BTREE_EPHEMERAL)
 
 	node_size = btree_info.bt_fixed.bt_node_size
 	key_size = btree_info.bt_fixed.bt_key_size
@@ -453,13 +621,23 @@ def read_btree_node(
 		else:
 			f.seek(value_pos, os.SEEK_SET)
 
-			if node.btn_flags & BTNODE_HASHED:
+			if is_hashed:
 				btn_index_node_val = BtnIndexNodeVal.parse_stream(f)
-				oid = btn_index_node_val.binv_child_oid
+				oid = btn_index_node_val.binv_child_oid + btree_root_oid
 			else:
 				oid = OID.parse_stream(f)
 
-			child_pos = oid * block_size
+			if is_physical_btree:
+				child_pos = oid * block_size
+			elif is_ephemeral_btree:
+				raise NotImplementedError(f"ephemeral btree child oid {oid}")
+			else:
+				if omap_list is None:
+					raise ValueError(f"virtual btree child oid {oid} but no omap_list")
+
+				child_omap_val = latest_omap_val(omap_list, oid)
+				child_pos = child_omap_val.ov_paddr * block_size
+
 			pairs.extend(
 				read_btree_node(
 					f=f,
@@ -468,6 +646,8 @@ def read_btree_node(
 					btree_info=btree_info,
 					k=k,
 					v=v,
+					omap_list=omap_list,
+					btree_root_oid=btree_root_oid,
 				)
 			)
 
@@ -480,6 +660,8 @@ def read_btree(
 		btree_pos: int,
 		k: Construct,
 		v: Construct,
+		omap_list: list | None,
+		root_btree_oid,
 ) -> list[tuple[Container, Container]]:
 	with file_keep_pos(f):
 		f.seek(btree_pos, os.SEEK_SET)
@@ -491,6 +673,9 @@ def read_btree(
 		f.seek(btree_pos + block_size - BTreeInfo.sizeof(), os.SEEK_SET)
 		btree_info = BTreeInfo.parse_stream(f)
 
+		if root_btree_oid is None:
+			root_btree_oid = root.btn_o.o_oid
+
 		return read_btree_node(
 			f=f,
 			block_size=block_size,
@@ -498,7 +683,10 @@ def read_btree(
 			btree_info=btree_info,
 			k=k,
 			v=v,
+			omap_list=omap_list,
+			btree_root_oid=root_btree_oid,
 		)
+
 
 def latest_omap_val(omap_list: list[tuple[Container, Container]], oid: int) -> Container:
 	relevant_omap_kvs = [omap_kv for omap_kv in omap_list if omap_kv[0].ok_oid == oid]
@@ -507,6 +695,7 @@ def latest_omap_val(omap_list: list[tuple[Container, Container]], oid: int) -> C
 		raise ValueError(f"could not find oid {oid} in omap")
 
 	return max(relevant_omap_kvs, key=lambda omap_kv: omap_kv[0].ok_xid)[1]
+
 
 def extract_files(path: Path, out_dir: Path) -> list[Path]:
 	out_dir.mkdir(parents=True, exist_ok=True)
@@ -518,7 +707,7 @@ def extract_files(path: Path, out_dir: Path) -> list[Path]:
 		f.seek(nx_superblock.nx_omap_oid * block_size, os.SEEK_SET)
 		nx_omap_phys = OMapPhys.parse_stream(f)
 
-		omap_list = read_btree(f, block_size, nx_omap_phys.om_tree_oid * block_size, OMapKey, OMapVal)
+		omap_list = read_btree(f, block_size, nx_omap_phys.om_tree_oid * block_size, OMapKey, OMapVal, None, None)
 
 		fs_oids = [oid for oid in nx_superblock.nx_fs_oid if oid != 0]
 
@@ -529,10 +718,43 @@ def extract_files(path: Path, out_dir: Path) -> list[Path]:
 
 			f.seek(apfs_superblock.apfs_omap_oid * block_size, os.SEEK_SET)
 			apfs_omap = OMapPhys.parse_stream(f)
-			apfs_omap_list = read_btree(f, block_size, apfs_omap.om_tree_oid * block_size, OMapKey, OMapVal)
+			apfs_omap_list = read_btree(f, block_size, apfs_omap.om_tree_oid * block_size, OMapKey, OMapVal, None, None)
 
 			root_tree_omap_entry = latest_omap_val(apfs_omap_list, apfs_superblock.apfs_root_tree_oid)
 			root_tree_addr = root_tree_omap_entry.ov_paddr * block_size
-			root_fs_entries = read_btree(f, block_size, root_tree_addr, APFSRootTreeKey, APFSRootTreeValue)
+			root_fs_entries = read_btree(
+				f,
+				block_size,
+				root_tree_addr,
+				APFSRootTreeKey,
+				APFSRootTreeValue,
+				apfs_omap_list,
+				apfs_superblock.apfs_root_tree_oid,
+			)
 
-	return []
+			fext_fs_entries = []
+			fext_tree_oid = apfs_superblock.apfs_fext_tree_oid
+			if fext_tree_oid != 0:
+				fext_tree_storage = apfs_superblock.apfs_fext_tree_type & OBJ_STORAGETYPE_MASK
+
+				if fext_tree_storage == OBJ_PHYSICAL:
+					fext_tree_addr = fext_tree_oid * block_size
+				elif fext_tree_storage == OBJ_VIRTUAL:
+					fext_tree_omap_entry = latest_omap_val(apfs_omap_list, fext_tree_oid)
+					fext_tree_addr = fext_tree_omap_entry.ov_paddr * block_size
+				else:
+					raise RuntimeError(f"unknown fext tree storage type {fext_tree_oid}")
+
+				fext_fs_entries = read_btree(f, block_size, fext_tree_addr, FExtTreeKey, FExtTreeVal, apfs_omap_list,
+				                             fext_tree_oid)
+
+			volume_name = apfs_superblock.apfs_volname
+			out_volume_name = out_dir / volume_name
+			out_volume_name.mkdir(parents=True, exist_ok=True)
+
+			print("A")
+
+			root_fs_entries = []
+			fext_fs_entries = []
+
+		return []
